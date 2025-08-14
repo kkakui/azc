@@ -1,0 +1,2 @@
+SPDX-FileCopyrightText: Copyright (c) ${project.inceptionYear} ${owner}
+SPDX-License-Identifier: MIT
