@@ -6,38 +6,67 @@ package io.github.kkakui.azc.model;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link Subject}. */
 public class TestSubject {
 
   @Test
-  public void testBuildValidSubject() {
-    Subject subject = new Subject.Builder().id("user123").type("user").build();
-    assertNotNull(subject);
-    assertEquals("user123", subject.getId());
+  void testBuilder_withRequiredFields() {
+    Subject subject = new Subject.Builder().type("user").id("alice").build();
     assertEquals("user", subject.getType());
+    assertEquals("alice", subject.getId());
+    assertNotNull(subject.getProperties());
+    assertTrue(subject.getProperties().isEmpty());
   }
 
   @Test
-  public void testBuildSubjectWithoutIdThrowsException() {
-    Exception exception =
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> {
-              new Subject.Builder().type("user").build();
-            });
-    assertEquals("Subject 'id' must not be null or blank.", exception.getMessage());
+  void testBuilder_withProperties() {
+    Subject subject =
+        new Subject.Builder()
+            .type("user")
+            .id("bob")
+            .addProperty("department", "engineering")
+            .addProperty("active", true)
+            .build();
+
+    assertEquals("user", subject.getType());
+    assertEquals("bob", subject.getId());
+    Map<String, Object> properties = subject.getProperties();
+    assertNotNull(properties);
+    assertEquals(2, properties.size());
+    assertEquals("engineering", properties.get("department"));
+    assertEquals(true, properties.get("active"));
   }
 
   @Test
-  public void testBuildSubjectWithoutTypeThrowsException() {
-    Exception exception =
+  void testBuilder_propertiesAreImmutable() {
+    Subject subject =
+        new Subject.Builder().type("user").id("charlie").addProperty("role", "guest").build();
+
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> {
+          subject.getProperties().put("role", "admin");
+        });
+  }
+
+  @Test
+  void testBuilder_missingTypeThrowsException() {
+    // Assuming the builder validates that 'type' is present.
+    Exception e =
         assertThrows(
-            IllegalArgumentException.class,
-            () -> {
-              new Subject.Builder().id("user123").build();
-            });
-    assertEquals("Subject 'type' must not be null or blank.", exception.getMessage());
+            IllegalArgumentException.class, () -> new Subject.Builder().id("dave").build());
+    assertEquals("Subject 'type' must not be null or blank.", e.getMessage());
+  }
+
+  @Test
+  void testBuilder_missingIdThrowsException() {
+    // Assuming the builder validates that 'id' is present.
+    Exception e =
+        assertThrows(
+            IllegalArgumentException.class, () -> new Subject.Builder().type("service").build());
+    assertEquals("Subject 'id' must not be null or blank.", e.getMessage());
   }
 }

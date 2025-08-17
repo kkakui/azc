@@ -25,7 +25,7 @@ public class Resource {
   private Resource(String id, String type, Map<String, Object> properties) {
     this.id = id;
     this.type = type;
-    this.properties = properties;
+    this.properties = Map.copyOf(properties);
   }
 
   public static class Builder {

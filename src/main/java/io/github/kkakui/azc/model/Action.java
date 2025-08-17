@@ -23,7 +23,7 @@ public class Action {
 
   private Action(String name, Map<String, Object> properties) {
     this.name = name;
-    this.properties = properties;
+    this.properties = Map.copyOf(properties);
   }
 
   public static class Builder {
