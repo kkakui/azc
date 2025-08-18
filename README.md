@@ -47,7 +47,7 @@ Add the repository and dependency to your project's `pom.xml`:
     <dependency>
         <groupId>io.github.kkakui</groupId>
         <artifactId>azc</artifactId>
-        <version>0.0.1</version>
+        <version>0.0.2</version>
     </dependency>
 </dependencies>
 ```
@@ -70,7 +70,7 @@ Add the JitPack repository and the dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.kkakui</groupId>
         <artifactId>azc</artifactId>
-        <version>0.0.1</version>
+        <version>0.0.2</version>
     </dependency>
 </dependencies>
 ```
@@ -85,17 +85,20 @@ Here is a basic example of how to use the AuthZEN Java Client to perform an acce
 First, configure the client with your Policy Decision Point (PDP) endpoint and authentication credentials.
 
 ```java
-import io.github.kkakui.azc.AuthzClient;
+import io.github.kkakui.azc.api.AuthzClient;
 import io.github.kkakui.azc.config.DefaultAuthzClientConfig;
+import io.github.kkakui.azc.transport.http.SimpleHttpClient;
 
 // Configure the client with your PDP endpoint and API key
-DefaultAuthzClientConfig config = new DefaultAuthzClientConfig.Builder()
+DefaultAuthzClientConfig config = DefaultAuthzClientConfig.builder()
     .endpoint("https://pdp.mycompany.com/access/v1/evaluation")
     .apiKey("your-secret-api-key")
+    // The API key header can be customized via .apiKeyHeader("X-API-Key").
+    // If not set, it defaults to "Authorization".
     .build();
 
 // Create the client instance
-AuthzClient client = new AuthzClient(config);
+AuthzClient client = new AuthzClient(config, new SimpleHttpClient());
 ```
 
 ### 2. Build the Authorization Request
@@ -103,42 +106,69 @@ AuthzClient client = new AuthzClient(config);
 Next, build the components of your authorization request: the subject, action, and resource.
 
 ```java
-import io.github.kkakui.azc.entity.Action;
-import io.github.kkakui.azc.entity.Decision;
-import io.github.kkakui.azc.entity.Resource;
-import io.github.kkakui.azc.entity.Subject;
+import io.github.kkakui.azc.api.AuthorizationRequest;
+import io.github.kkakui.azc.model.Action;
+import io.github.kkakui.azc.model.Resource;
+import io.github.kkakui.azc.model.Subject;
 
 // Define the subject asking for access
-Subject subject = new Subject.Builder("user", "alice@acmecorp.com").build();
+Subject subject = new Subject.Builder()
+    .type("user")
+    .id("alice@acmecorp.com")
+    .build();
 
 // Define the resource they want to access
-Resource resource = new Resource.Builder("document", "report-123").build();
+Resource resource = new Resource.Builder()
+    .type("document")
+    .id("report-123")
+    .build();
 
 // Define the action they want to perform
-Action action = new Action.Builder("view").build();
+Action action = new Action.Builder()
+    .name("view")
+    .build();
+
+// Assemble the authorization request
+AuthorizationRequest request = new AuthorizationRequest.Builder()
+    .subject(subject)
+    .resource(resource)
+    .action(action)
+    .build();
 ```
 
 ### 3. Evaluate the Decision
 
-Finally, call the `evaluate` method and check the decision.
+Finally, call the `authorize` method and check the decision.
 
 ```java
-try {
-    Decision decision = client.evaluate(subject, resource, action);
+import io.github.kkakui.azc.api.AuthorizationResponse;
+import io.github.kkakui.azc.exception.AuthorizationException;
+import io.github.kkakui.azc.exception.TransportException;
+import java.util.Map;
 
-    if (decision.isAllowed()) {
+try {
+    AuthorizationResponse response = client.authorize(request);
+
+    if (response.isAllowed()) {
         System.out.println("Access granted!");
         // Proceed with the operation
     } else {
         System.out.println("Access denied.");
         // Optionally, inspect the context for reasons
-        decision.getContext().ifPresent(context -> {
-            System.out.println("Reason: " + context);
-        });
+        Map<String, Object> context = response.getContext();
+        if (context != null && !context.isEmpty()) {
+            System.out.println("Reason: " + context));
+        }
     }
-} catch (Exception e) {
-    System.err.println("An error occurred during authorization: " + e.getMessage());
-    // Handle exceptions (e.g., network issues, server errors)
+} catch (AuthorizationException e) {
+    System.err.println("Authorization failed: " + e.getMessage());
+
+    // Check the cause to distinguish between different failure types
+    if (e.getCause() instanceof TransportException) {
+        System.err.println("This was a network/transport error.");
+    } else {
+        // Handle other exceptions
+    }
 }
 ```
 
