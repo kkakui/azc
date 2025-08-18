@@ -4,6 +4,9 @@
  */
 package io.github.kkakui.azc.config;
 
+import java.net.URI;
+import java.util.Optional;
+
 /**
  * A default, concrete implementation of {@link AuthzClientConfig}.
  *
@@ -15,10 +18,14 @@ public class DefaultAuthzClientConfig implements AuthzClientConfig {
   private final String apiKey;
   private final String apiKeyHeader;
 
-  public DefaultAuthzClientConfig(String endpoint, String apiKeyHeader, String apiKey) {
-    this.endpoint = endpoint;
-    this.apiKeyHeader = apiKeyHeader;
-    this.apiKey = apiKey;
+  private DefaultAuthzClientConfig(Builder builder) {
+    this.endpoint = builder.endpoint;
+    this.apiKey = builder.apiKey;
+    this.apiKeyHeader = builder.apiKeyHeader;
+  }
+
+  public static Builder builder() {
+    return new Builder();
   }
 
   @Override
@@ -26,11 +33,49 @@ public class DefaultAuthzClientConfig implements AuthzClientConfig {
     return endpoint;
   }
 
-  public String getApiKeyHeader() {
-    return apiKeyHeader;
+  @Override
+  public Optional<String> getApiKey() {
+    return Optional.ofNullable(apiKey);
   }
 
-  public String getApiKey() {
-    return apiKey;
+  @Override
+  public Optional<String> getApiKeyHeader() {
+    return Optional.ofNullable(apiKeyHeader);
+  }
+
+  public static class Builder {
+    private String endpoint;
+    private String apiKey;
+    private String apiKeyHeader;
+
+    private Builder() {}
+
+    public Builder endpoint(String endpoint) {
+      this.endpoint = endpoint;
+      return this;
+    }
+
+    public Builder apiKey(String apiKey) {
+      this.apiKey = apiKey;
+      return this;
+    }
+
+    public Builder apiKeyHeader(String apiKeyHeader) {
+      this.apiKeyHeader = apiKeyHeader;
+      return this;
+    }
+
+    public DefaultAuthzClientConfig build() {
+      if (endpoint == null || endpoint.isBlank()) {
+        throw new IllegalStateException("Endpoint must be provided.");
+      }
+      try {
+        // Validate that the endpoint is a valid URI
+        URI.create(endpoint);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalStateException("Endpoint must be a valid URL.", e);
+      }
+      return new DefaultAuthzClientConfig(this);
+    }
   }
 }

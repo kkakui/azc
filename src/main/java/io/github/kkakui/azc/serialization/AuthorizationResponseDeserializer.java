@@ -4,24 +4,31 @@
  */
 package io.github.kkakui.azc.serialization;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.kkakui.azc.api.AuthorizationResponse;
+import io.github.kkakui.azc.exception.AuthorizationException;
 
 /**
- * A utility class for deserializing a JSON string into an {@link AuthorizationResponse} object.
- * This class uses Jackson for data binding.
+ * A utility class for deserializing the JSON response from the authorization service into an {@link
+ * AuthorizationResponse} object.
  */
-public class AuthorizationResponseDeserializer {
-  private static final ObjectMapper mapper = new ObjectMapper();
+public final class AuthorizationResponseDeserializer {
 
-  private AuthorizationResponseDeserializer() {
-    // Prevent instantiation of this utility class
-  }
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  public static AuthorizationResponse parseResponseJson(String json) throws Exception {
-    // The AuthorizationResponse class is annotated with @JsonCreator and @JsonProperty
-    // to allow Jackson to map the JSON fields ("decision", "context") directly
-    // to the constructor parameters.
-    return mapper.readValue(json, AuthorizationResponse.class);
+  private AuthorizationResponseDeserializer() {}
+
+  public static AuthorizationResponse parseResponseJson(String json) throws AuthorizationException {
+    if (json == null || json.isBlank()) {
+      throw new AuthorizationException("Response JSON from server was null or empty.");
+    }
+    try {
+      return MAPPER.readValue(json, AuthorizationResponse.class);
+    } catch (JsonProcessingException e) {
+      // Wrap the specific parsing exception in our application-specific exception.
+      throw new AuthorizationException(
+          "Failed to deserialize authorization response from JSON.", e);
+    }
   }
 }

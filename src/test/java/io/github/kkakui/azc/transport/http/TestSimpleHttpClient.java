@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.github.kkakui.azc.config.AuthzClientConfig;
 import io.github.kkakui.azc.config.DefaultAuthzClientConfig;
+import io.github.kkakui.azc.exception.AuthorizationException;
+import io.github.kkakui.azc.exception.TransportException;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.UUID;
@@ -43,7 +45,12 @@ public class TestSimpleHttpClient {
     mockWebServer.enqueue(new MockResponse().setResponseCode(200).setBody("{\"decision\":true}"));
 
     String endpoint = mockWebServer.url("/").toString();
-    AuthzClientConfig config = new DefaultAuthzClientConfig(endpoint, "Authorization", "test-key");
+    AuthzClientConfig config =
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("test-key")
+            .apiKeyHeader("Authorization")
+            .build();
 
     // When
     String response = client.request(config, "{}");
@@ -66,7 +73,12 @@ public class TestSimpleHttpClient {
     mockWebServer.enqueue(new MockResponse().setResponseCode(200).setBody("{\"decision\":true}"));
 
     String endpoint = mockWebServer.url("/").toString();
-    AuthzClientConfig config = new DefaultAuthzClientConfig(endpoint, "Authorization", "test-key");
+    AuthzClientConfig config =
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("test-key")
+            .apiKeyHeader("Authorization")
+            .build();
 
     // When
     String response = client.request(config, "{}");
@@ -88,13 +100,24 @@ public class TestSimpleHttpClient {
     }
 
     String endpoint = mockWebServer.url("/").toString();
-    AuthzClientConfig config = new DefaultAuthzClientConfig(endpoint, "Authorization", "test-key");
+    AuthzClientConfig config =
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("test-key")
+            .apiKeyHeader("Authorization")
+            .build();
 
     // When & Then
-    Exception exception = assertThrows(Exception.class, () -> client.request(config, "{}"));
+    AuthorizationException exception =
+        assertThrows(AuthorizationException.class, () -> client.request(config, "{}"));
 
-    // The underlying client throws IOException for connection issues
-    assertTrue(exception instanceof IOException);
+    // Then: Verify the cause is a TransportException, which in turn is caused by an IOException
+    Throwable cause = exception.getCause();
+    assertNotNull(cause, "AuthorizationException should have a cause for transport errors");
+    assertTrue(cause instanceof TransportException, "The cause should be a TransportException");
+    assertNotNull(cause.getCause(), "TransportException should have a root cause");
+    assertTrue(cause.getCause() instanceof IOException, "The root cause should be an IOException");
+
     assertEquals(maxRetries + 1, mockWebServer.getRequestCount());
   }
 
@@ -108,13 +131,19 @@ public class TestSimpleHttpClient {
             .setBody("Forbidden"));
 
     String endpoint = mockWebServer.url("/").toString();
-    AuthzClientConfig config = new DefaultAuthzClientConfig(endpoint, "Authorization", "test-key");
+    AuthzClientConfig config =
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("test-key")
+            .apiKeyHeader("Authorization")
+            .build();
 
     // When & Then
-    Exception exception = assertThrows(Exception.class, () -> client.request(config, "{}"));
+    AuthorizationException exception =
+        assertThrows(AuthorizationException.class, () -> client.request(config, "{}"));
 
     // Then
-    assertTrue(exception.getMessage().contains("HTTP request failed with status 403"));
+    assertTrue(exception.getMessage().startsWith("HTTP request failed with status 403"));
     assertEquals(1, mockWebServer.getRequestCount(), "Should not retry on client errors");
   }
 
@@ -124,7 +153,12 @@ public class TestSimpleHttpClient {
     client = new SimpleHttpClient(Duration.ofSeconds(1), 0);
     mockWebServer.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
     String endpoint = mockWebServer.url("/").toString();
-    AuthzClientConfig config = new DefaultAuthzClientConfig(endpoint, "Authorization", "test-key");
+    AuthzClientConfig config =
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("test-key")
+            .apiKeyHeader("Authorization")
+            .build();
 
     // When
     client.request(config, "{}");
@@ -153,11 +187,16 @@ public class TestSimpleHttpClient {
     }
 
     String endpoint = mockWebServer.url("/").toString();
-    AuthzClientConfig config = new DefaultAuthzClientConfig(endpoint, "Authorization", "test-key");
+    AuthzClientConfig config =
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("test-key")
+            .apiKeyHeader("Authorization")
+            .build();
 
     // When
     long startTime = System.nanoTime();
-    assertThrows(IOException.class, () -> client.request(config, "{}"));
+    assertThrows(AuthorizationException.class, () -> client.request(config, "{}"));
     long durationMillis = Duration.ofNanos(System.nanoTime() - startTime).toMillis();
 
     // Then
@@ -180,9 +219,13 @@ public class TestSimpleHttpClient {
     client = new SimpleHttpClient();
     mockWebServer.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
     String endpoint = mockWebServer.url("/").toString();
-    // Use the constructor that sets the API key with the default "Authorization" header
+    // Configure the client to use the standard "Authorization" header.
     AuthzClientConfig config =
-        new DefaultAuthzClientConfig(endpoint, "Authorization", "my-secret-key");
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("my-secret-key")
+            .apiKeyHeader("Authorization")
+            .build();
 
     // When
     client.request(config, "{}");
@@ -206,7 +249,12 @@ public class TestSimpleHttpClient {
     mockWebServer.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
     String endpoint = mockWebServer.url("/").toString();
     // Use a custom header name
-    AuthzClientConfig config = new DefaultAuthzClientConfig(endpoint, "X-Api-Key", "my-secret-key");
+    AuthzClientConfig config =
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("my-secret-key")
+            .apiKeyHeader("X-Api-Key")
+            .build();
 
     // When
     client.request(config, "{}");
@@ -222,5 +270,35 @@ public class TestSimpleHttpClient {
     assertNull(
         recordedRequest.getHeader("Authorization"),
         "Default Authorization header should not be present");
+  }
+
+  @Test
+  public void testUsesDefaultAuthorizationHeaderWhenNotSpecified() throws Exception {
+    // Given
+    client = new SimpleHttpClient();
+    mockWebServer.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
+    String endpoint = mockWebServer.url("/").toString();
+
+    // Configure the client with an API key but no explicit header name.
+    AuthzClientConfig config =
+        DefaultAuthzClientConfig.builder()
+            .endpoint(endpoint)
+            .apiKey("my-default-key")
+            // .apiKeyHeader(...) is intentionally omitted
+            .build();
+
+    // When
+    client.request(config, "{}");
+
+    // Then
+    assertEquals(1, mockWebServer.getRequestCount());
+    RecordedRequest recordedRequest = mockWebServer.takeRequest();
+    String authHeader = recordedRequest.getHeader("Authorization");
+
+    assertNotNull(authHeader, "Default Authorization header should be present");
+    assertEquals(
+        "Bearer my-default-key",
+        authHeader,
+        "Authorization header should be correctly formatted with 'Bearer' prefix");
   }
 }

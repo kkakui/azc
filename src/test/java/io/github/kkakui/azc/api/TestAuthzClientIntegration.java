@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.kkakui.azc.config.AuthzClientConfig;
 import io.github.kkakui.azc.context.ContextFactory;
 import io.github.kkakui.azc.exception.AuthorizationException;
+import io.github.kkakui.azc.exception.TransportException;
 import io.github.kkakui.azc.model.Action;
 import io.github.kkakui.azc.model.Context;
 import io.github.kkakui.azc.model.Resource;
@@ -18,6 +19,7 @@ import io.github.kkakui.azc.model.Subject;
 import io.github.kkakui.azc.transport.http.HttpTransport;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -30,7 +32,7 @@ public class TestAuthzClientIntegration {
     private String lastJsonBody;
 
     @Override
-    public String request(AuthzClientConfig config, String jsonBody) {
+    public String request(AuthzClientConfig config, String jsonBody) throws AuthorizationException {
       this.lastJsonBody = jsonBody;
       assertEquals("https://mock-endpoint", config.getEndpoint());
       return """
@@ -59,6 +61,16 @@ public class TestAuthzClientIntegration {
     @Override
     public String getEndpoint() {
       return endpoint;
+    }
+
+    @Override
+    public Optional<String> getApiKey() {
+      return Optional.empty();
+    }
+
+    @Override
+    public Optional<String> getApiKeyHeader() {
+      return Optional.empty();
     }
   }
 
@@ -184,5 +196,44 @@ public class TestAuthzClientIntegration {
     assertEquals("192.168.1.100", contextNode.path("ip_address").asText()); // from request
     assertEquals("integration-test", contextNode.path("source").asText()); // from factory
     assertEquals("2025-08-06T00:00:00Z", contextNode.path("timestamp").asText()); // from factory
+  }
+
+  static class MockFailingTransport implements HttpTransport {
+    @Override
+    public String request(AuthzClientConfig config, String jsonBody) throws AuthorizationException {
+      throw new AuthorizationException(
+          "Simulated network failure", new TransportException("Connection timed out"));
+    }
+  }
+
+  @Test
+  public void testAuthorize_propagatesTransportExceptionCorrectly() {
+    // Given
+    AuthzClientConfig config = new MockAuthzClientConfig("https://mock-endpoint");
+    HttpTransport mockTransport = new MockFailingTransport();
+    AuthzClient client = new AuthzClient(config, mockTransport);
+
+    AuthorizationRequest request =
+        new AuthorizationRequest.Builder()
+            .subject(new Subject.Builder().id("s").type("t").build())
+            .resource(new Resource.Builder().id("r").type("t").build())
+            .action(new Action.Builder().name("a").build())
+            .build();
+
+    // When & Then
+    AuthorizationException exception =
+        assertThrows(AuthorizationException.class, () -> client.authorize(request));
+
+    // Verify that the exception is the one from the transport layer, not a newly wrapped one.
+    assertEquals("Simulated network failure", exception.getMessage());
+
+    // And verify the cause is the TransportException
+    Throwable cause = exception.getCause();
+    assertNotNull(
+        cause, "AuthorizationException should have a cause for transport-related failures");
+    assertTrue(
+        cause instanceof TransportException,
+        "The cause of the AuthorizationException should be a TransportException");
+    assertEquals("Connection timed out", cause.getMessage());
   }
 }

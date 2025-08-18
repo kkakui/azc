@@ -44,8 +44,13 @@ public class AuthzClient {
       String requestJson = AuthorizationRequestSerializer.buildRequestJson(request);
       String responseJson = transport.request(config, requestJson);
       return AuthorizationResponseDeserializer.parseResponseJson(responseJson);
+    } catch (AuthorizationException e) {
+      // Re-throw the specific exception from the transport layer or deserialization directly.
+      throw e;
     } catch (Exception e) {
-      throw new AuthorizationException("Authorization request failed", e);
+      // For any other unexpected exceptions, wrap them in an AuthorizationException.
+      throw new AuthorizationException(
+          "Authorization request failed due to an unexpected error", e);
     }
   }
 }
